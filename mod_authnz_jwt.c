@@ -1267,7 +1267,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
 		//strcmp(authSubType, "-cookie") == 0 ? 4 :
 		//strcmp(authSubType, "-both") == 0 ? 6 :
 		//0;
-	const int delivery_type = 8;
+	const int delivery_type = 0;
 	if (strcmp(authSubType, "-bearer") == 0)
 		delivery_type = 2;
 	else if (strcmp(authSubType, "-cookie") == 0)
@@ -1290,6 +1290,36 @@ static int auth_jwt_authn_with_token(request_rec *r){
 
 	if (delivery_type == 0) {
 		return DECLINED;
+	}
+
+	int query_parameter_remove1 = get_config_int_value(r, dir_query_parameter_remove);	
+	token_range_t token_range;
+	if (find_query_parameter(r->args, "AuthToken", &token_range))
+	{
+		size_t token_length2 = token_range.end - token_range.value_begin;
+		token_str_buffer = (char*)malloc(token_length2 + 1);
+		memcpy(token_str_buffer, token_range.value_begin, token_length2);
+		token_str_buffer[token_length2] = 0;
+		token_str = token_str_buffer;
+		if (query_parameter_remove1)
+		{
+			size_t query_len = strlen(r->args);
+			if (query_len == token_range.end - token_range.begin)
+			{
+				r->args = NULL;
+			}
+			else
+			{
+				const char* args_end = r->args + query_len;
+				size_t rest_len = args_end - token_range.end;
+				memcpy((void*)token_range.begin, token_range.end + 1, rest_len);
+			}
+		}
+	}
+	else
+	{
+		logCode = APLOGNO(55404);
+		logStr = "auth_jwt authn: missing Authorization query parameter";
 	}
 
 	if(delivery_type & 2) {
@@ -1328,7 +1358,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
 		int query_parameter_remove = get_config_int_value(r, dir_query_parameter_remove);
 		const char* query_parameter_name = (char *)get_config_value(r, dir_query_parameter_name);
 		token_range_t token_range;
-		if (find_query_parameter(r->args, query_parameter_name, &token_range))
+		if (find_query_parameter(r->args, "AuthToken", &token_range))
 		{
 			size_t token_length = token_range.end - token_range.value_begin;
 			token_str_buffer = (char*)malloc(token_length + 1);
@@ -1400,8 +1430,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
 		const char* attribute_o = (const char*)get_config_value(r, dir_attribute_o);
 		char* maybe_o = (char *)token_get_claim(token, attribute_o);
 		
-		/* 
-		 * User claim claim is optional
+		/* * User claim claim is optional
 		if(maybe_user == NULL){
 			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55407)
 					"Username was not in token ('%s' attribute is expected)", attribute_username);
@@ -1409,9 +1438,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
 			"Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Username was not in token\"",
 			 NULL));
 			return HTTP_UNAUTHORIZED;
-		} 
-		 
-		 */
+		} */
 		
 		apr_table_set(r->subprocess_env, "cn", maybe_cn);
 		apr_table_set(r->subprocess_env, "ou", maybe_ou);
