@@ -56,6 +56,9 @@
 
 #define DEFAULT_FORM_USERNAME "user"
 #define DEFAULT_FORM_PASSWORD "password"
+#define DEFAULT_FORM_CN "cn"
+#define DEFAULT_FORM_OU "ou"
+#define DEFAULT_FORM_O "o"
 #define DEFAULT_ATTRIBUTE_USERNAME "user"
 #define DEFAULT_SIGNATURE_ALGORITHM "HS256"
 #define DEFAULT_COOKIE_NAME "AuthToken"
@@ -458,7 +461,7 @@ static const char* get_config_value(request_rec *r, jwt_directive directive){
 			}else if(sconf->form_cn_set && sconf->form_cn){
 				value = sconf->form_cn;
 			}else{
-				return "";
+				return DEFAULT_FORM_CN;
 			}
 			break;
 		case dir_form_ou:
@@ -467,7 +470,7 @@ static const char* get_config_value(request_rec *r, jwt_directive directive){
 			}else if(sconf->form_ou_set && sconf->form_ou){
 				value = sconf->form_ou;
 			}else{
-				return "";
+				return DEFAULT_FORM_OU;
 			}
 			break;
 		case dir_form_o:
@@ -476,7 +479,7 @@ static const char* get_config_value(request_rec *r, jwt_directive directive){
 			}else if(sconf->form_o_set && sconf->form_o){
 				value = sconf->form_o;
 			}else{
-				return "";
+				return DEFAULT_FORM_O;
 			}
 			break;
 		case dir_form_password:
