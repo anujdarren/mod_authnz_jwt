@@ -1007,6 +1007,7 @@ static int create_token(request_rec *r, char** token_str, const char* username, 
 	}
 
 	token_add_claim_int(token, "iat", (long)iat);
+	token_add_claim_int(token, "test", "ou");
 
 	if(iss){
 		token_add_claim(token, "iss", iss);
