@@ -188,7 +188,7 @@ static const authz_provider authz_jwtclaimarray_provider = {
 
 static int auth_jwt_login_handler(request_rec *r);
 static int check_authn(request_rec *r, const char *username, const char *password);
-static int create_token(request_rec *r, char** token_str, const char* username);
+static int create_token(request_rec *r, char** token_str, const char* username, const char* cn, const char* ou, const char* o);
 
 static int auth_jwt_authn_with_token(request_rec *r);
 
