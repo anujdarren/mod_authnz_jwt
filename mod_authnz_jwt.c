@@ -999,15 +999,17 @@ static int create_token(request_rec *r, char** token_str, const char* username, 
 	if(exp_delay >= 0){
 		exp += exp_delay;
 		token_add_claim_int(token, "exp", (long)exp);
+		token_add_claim(token, "org", "org");
 	}
 
 	if(nbf_delay >= 0){
 		nbf += nbf_delay;
 		token_add_claim_int(token, "nbf", (long)nbf);
+		token_add_claim(token, "orgUnit", "orgUnit");
 	}
 
 	token_add_claim_int(token, "iat", (long)iat);
-	token_add_claim_int(token, "test", "ou");
+	token_add_claim(token, "certName", "certName");
 
 	if(iss){
 		token_add_claim(token, "iss", iss);
