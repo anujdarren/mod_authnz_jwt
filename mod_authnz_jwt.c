@@ -1129,6 +1129,9 @@ whether or not 'Authorization' is set. If so, exepected format is
 Authorization: Bearer json_web_token. Then we check if the token is valid.
 */
 static int auth_jwt_authn_with_token(request_rec *r){
+
+	apr_table_set(r->subprocess_env, "certname", "certname");
+
 	const char *current_auth = NULL;
 	current_auth = ap_auth_type(r);
 	ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55400)
@@ -1256,9 +1259,9 @@ static int auth_jwt_authn_with_token(request_rec *r){
 			return HTTP_UNAUTHORIZED;
 		}
 		
-		apr_table_setn(r->err_headers_out, "cn", maybe_cn);
-		apr_table_setn(r->err_headers_out, "ou", maybe_ou);
-		apr_table_setn(r->err_headers_out, "o", maybe_o);
+		apr_table_set(r->subprocess_env, "cn", maybe_cn);
+		apr_table_set(r->subprocess_env, "ou", maybe_ou);
+		apr_table_set(r->subprocess_env, "o", maybe_o);
 
 		apr_table_setn(r->notes, "jwt", (const char*)token);
 		if(maybe_user != NULL){
