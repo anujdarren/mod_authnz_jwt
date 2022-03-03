@@ -1023,14 +1023,14 @@ static int create_token(request_rec *r, char** token_str, const char* username, 
 
 	token_add_claim(token, username_attribute, username);
 
-	const char* cn_attribute = (const char *)get_config_value(r, dir_attribute_cn);
-	token_add_claim(token, cn_attribute, cn);
+	//const char* cn_attribute = (const char *)get_config_value(r, dir_attribute_cn);
+	token_add_claim(token, "cn", cn);
 
-	const char* ou_attribute = (const char *)get_config_value(r, dir_attribute_ou);
-	token_add_claim(token, ou_attribute, ou);
+	//const char* ou_attribute = (const char *)get_config_value(r, dir_attribute_ou);
+	token_add_claim(token, "ou", ou);
 
-	const char* o_attribute = (const char *)get_config_value(r, dir_attribute_o);
-	token_add_claim(token, o_attribute, o);
+	//const char* o_attribute = (const char *)get_config_value(r, dir_attribute_o);
+	token_add_claim(token, "o", o);
 
 	*token_str = token_encode_str(token);
 	token_free(token);
