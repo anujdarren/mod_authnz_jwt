@@ -1267,7 +1267,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
 		//strcmp(authSubType, "-cookie") == 0 ? 4 :
 		//strcmp(authSubType, "-both") == 0 ? 6 :
 		//0;
-	int delivery_type = 0;
+	const int delivery_type = 8;
 	if (strcmp(authSubType, "-bearer") == 0)
 		delivery_type = 2;
 	else if (strcmp(authSubType, "-cookie") == 0)
@@ -1400,7 +1400,8 @@ static int auth_jwt_authn_with_token(request_rec *r){
 		const char* attribute_o = (const char*)get_config_value(r, dir_attribute_o);
 		char* maybe_o = (char *)token_get_claim(token, attribute_o);
 		
-		/* * User claim claim is optional
+		/* 
+		 * User claim claim is optional
 		if(maybe_user == NULL){
 			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55407)
 					"Username was not in token ('%s' attribute is expected)", attribute_username);
@@ -1408,7 +1409,9 @@ static int auth_jwt_authn_with_token(request_rec *r){
 			"Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Username was not in token\"",
 			 NULL));
 			return HTTP_UNAUTHORIZED;
-		} */
+		} 
+		 
+		 */
 		
 		apr_table_set(r->subprocess_env, "cn", maybe_cn);
 		apr_table_set(r->subprocess_env, "ou", maybe_ou);
