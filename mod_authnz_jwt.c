@@ -999,17 +999,14 @@ static int create_token(request_rec *r, char** token_str, const char* username, 
 	if(exp_delay >= 0){
 		exp += exp_delay;
 		token_add_claim_int(token, "exp", (long)exp);
-		token_add_claim(token, "org", "org");
 	}
 
 	if(nbf_delay >= 0){
 		nbf += nbf_delay;
 		token_add_claim_int(token, "nbf", (long)nbf);
-		token_add_claim(token, "orgUnit", "orgUnit");
 	}
 
 	token_add_claim_int(token, "iat", (long)iat);
-	token_add_claim(token, "certName", "certName");
 
 	if(iss){
 		token_add_claim(token, "iss", iss);
@@ -1134,6 +1131,8 @@ Authorization: Bearer json_web_token. Then we check if the token is valid.
 static int auth_jwt_authn_with_token(request_rec *r){
 	const char *current_auth = NULL;
 	current_auth = ap_auth_type(r);
+	ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55400)
+							"current_auth" + current_auth);
 	int rv;
 
 	if (!current_auth || strncmp(current_auth, "jwt", 3) != 0) {
@@ -1240,7 +1239,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
 		const char* attribute_username = (const char*)get_config_value(r, dir_attribute_username);
 		char* maybe_user = (char *)token_get_claim(token, attribute_username);
 		
-		/*const char* attribute_cn = (const char*)get_config_value(r, dir_attribute_cn);
+		const char* attribute_cn = (const char*)get_config_value(r, dir_attribute_cn);
 		char* maybe_cn = (char *)token_get_claim(token, attribute_cn);
 		const char* attribute_ou = (const char*)get_config_value(r, dir_attribute_ou);
 		char* maybe_ou = (char *)token_get_claim(token, attribute_ou);
@@ -1256,7 +1255,11 @@ static int auth_jwt_authn_with_token(request_rec *r){
 			 NULL));
 			return HTTP_UNAUTHORIZED;
 		}
-		*/
+		
+		apr_table_setn(r->err_headers_out, "cn", maybe_cn);
+		apr_table_setn(r->err_headers_out, "ou", maybe_ou);
+		apr_table_setn(r->err_headers_out, "o", maybe_o);
+
 		apr_table_setn(r->notes, "jwt", (const char*)token);
 		if(maybe_user != NULL){
 			r->user = maybe_user;
