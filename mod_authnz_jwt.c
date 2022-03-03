@@ -17,6 +17,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 
 // RFC 7519 compliant library
 #include "jwt.h"
@@ -61,9 +62,12 @@
 #define DEFAULT_FORM_O "o"
 #define DEFAULT_ATTRIBUTE_USERNAME "user"
 #define DEFAULT_SIGNATURE_ALGORITHM "HS256"
+#define DEFAULT_TOKEN_NAME "token"
 #define DEFAULT_COOKIE_NAME "AuthToken"
 #define DEFAULT_COOKIE_ATTR "Secure;HttpOnly;SameSite"
 #define DEFAULT_COOKIE_REMOVE 1
+#define DEFAULT_QUERY_PARAMETER_NAME "AuthToken"
+#define DEFAULT_QUERY_PARAMETER_REMOVE 1
 
 #define JSON_DELIVERY "Json"
 #define COOKIE_DELIVERY "Cookie"
@@ -124,6 +128,8 @@ typedef struct {
 	const char* delivery_type;
 	int delivery_type_set;
 
+	const char* token_name;
+	int token_name_set;
 	const char* cookie_name;
 	int cookie_name_set;
 
@@ -132,6 +138,11 @@ typedef struct {
 
 	int cookie_remove;
 	int cookie_remove_set;
+	const char* query_parameter_name;
+	int query_parameter_name_set;
+
+	int query_parameter_remove;
+	int query_parameter_remove_set;
 
 	char *dir;
 
@@ -154,9 +165,12 @@ typedef enum {
 	dir_form_password,
 	dir_attribute_username,
 	dir_delivery_type,
+	dir_token_name,
 	dir_cookie_name,
 	dir_cookie_attr,
 	dir_cookie_remove,
+	dir_query_parameter_name,
+	dir_query_parameter_remove,
 } jwt_directive;
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  FUNCTIONS HEADERS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~  */
@@ -250,11 +264,17 @@ static const command_rec auth_jwt_cmds[] =
 					"The name of the attribute containing the username in the token"),
 	AP_INIT_TAKE1("AuthJWTDeliveryType", set_jwt_param, (void *)dir_delivery_type, RSRC_CONF|OR_AUTHCFG,
 					"Type of token delivery Json (default) or Cookie"),
+	AP_INIT_TAKE1("AuthJWTTokenName", set_jwt_param, (void *)dir_token_name, RSRC_CONF|OR_AUTHCFG,
+					"Token name to use when using JSON delivery"),
 	AP_INIT_TAKE1("AuthJWTCookieName", set_jwt_param, (void *)dir_cookie_name, RSRC_CONF|OR_AUTHCFG,
 					"Cookie name to use when using cookie delivery"),
 	AP_INIT_TAKE1("AuthJWTCookieAttr", set_jwt_param, (void *)dir_cookie_attr, RSRC_CONF|OR_AUTHCFG,
 					"semi-colon separated attributes for cookie when using cookie delivery. default: "DEFAULT_COOKIE_ATTR),
 	AP_INIT_TAKE1("AuthJWTRemoveCookie", set_jwt_int_param, (void *)dir_cookie_remove, RSRC_CONF|OR_AUTHCFG,
+					"Remove cookie from the headers, and thus keep it private from the backend. default: 1"),
+	AP_INIT_TAKE1("AuthJWTQueryParameterName", set_jwt_param, (void *)dir_query_parameter_name, RSRC_CONF|OR_AUTHCFG,
+					"semi-colon separated attributes for query when using cookie delivery. default: "DEFAULT_QUERY_PARAMETER_NAME),
+	AP_INIT_TAKE1("AuthJWTRemoveQueryParameter", set_jwt_int_param, (void *)dir_query_parameter_remove, RSRC_CONF|OR_AUTHCFG,
 					"Remove cookie from the headers, and thus keep it private from the backend. default: 1"),
 	{NULL}
 };
@@ -282,6 +302,7 @@ static void *create_auth_jwt_dir_config(apr_pool_t *p, char *d){
 	conf->form_password_set=0;
 	conf->attribute_username_set=0;
 	conf->delivery_type_set=0;
+	conf->token_name_set=0;
 	conf->cookie_name_set=0;
 	conf->cookie_attr_set=0;
 	conf->cookie_remove_set=0;
@@ -310,6 +331,7 @@ static void *create_auth_jwt_config(apr_pool_t * p, server_rec *s){
 	conf->form_password_set=0;
 	conf->attribute_username_set=0;
 	conf->delivery_type_set=0;
+	conf->token_name_set=0;
 	conf->cookie_name_set=0;
 	conf->cookie_attr_set=0;
 	conf->cookie_remove_set=0;
@@ -357,12 +379,18 @@ static void* merge_auth_jwt_dir_config(apr_pool_t *p, void* basev, void* addv){
 	new->attribute_username_set = base->attribute_username_set || add->attribute_username_set;
 	new->delivery_type = (add->delivery_type_set == 0) ? base->delivery_type : add->delivery_type;
 	new->delivery_type_set = base->delivery_type_set || add->delivery_type_set;
+	new->token_name = (add->token_name_set == 0) ? base->token_name : add->token_name;
+	new->token_name_set= base->token_name_set || add->token_name_set;
 	new->cookie_name = (add->cookie_name_set == 0) ? base->cookie_name : add->cookie_name;
 	new->cookie_name_set= base->cookie_name_set || add->cookie_name_set;
 	new->cookie_attr = (add->cookie_attr_set == 0) ? base->cookie_attr : add->cookie_attr;
 	new->cookie_attr_set= base->cookie_attr_set || add->cookie_attr_set;
 	new->cookie_remove = (add->cookie_remove_set == 0) ? base->cookie_remove : add->cookie_remove;
 	new->cookie_remove_set= base->cookie_remove_set || add->cookie_remove_set;
+	new->query_parameter_name = (add->query_parameter_name_set == 0) ? base->query_parameter_name : add->query_parameter_name;
+	new->query_parameter_name_set= base->query_parameter_name_set || add->query_parameter_name_set;
+	new->query_parameter_remove = (add->query_parameter_remove_set == 0) ? base->query_parameter_remove : add->query_parameter_remove;
+	new->query_parameter_remove_set= base->query_parameter_remove_set || add->query_parameter_remove_set;
 	return (void*)new;
 }
 
@@ -509,6 +537,15 @@ static const char* get_config_value(request_rec *r, jwt_directive directive){
 				return DEFAULT_DELIVERY_TYPE;
 			}
 			break;
+		case dir_token_name:
+			if(dconf->token_name_set && dconf->token_name){
+				value = dconf->token_name;
+			}else if(sconf->token_name_set && sconf->token_name){
+				value = sconf->token_name;
+			}else{
+				return DEFAULT_TOKEN_NAME;
+			}
+			break;
 		case dir_cookie_name:
 			if(dconf->cookie_name_set && dconf->cookie_name){
 				value = dconf->cookie_name;
@@ -525,6 +562,15 @@ static const char* get_config_value(request_rec *r, jwt_directive directive){
 				value = sconf->cookie_attr;
 			}else{
 				return DEFAULT_COOKIE_ATTR;
+			}
+			break;
+		case dir_query_parameter_name:
+			if(dconf->query_parameter_name_set && dconf->query_parameter_name){
+				value = dconf->query_parameter_name;
+			}else if(sconf->query_parameter_name_set && sconf->query_parameter_name){
+				value = sconf->query_parameter_name;
+			}else{
+				return DEFAULT_QUERY_PARAMETER_NAME;
 			}
 			break;
 		default:
@@ -576,6 +622,17 @@ static const int get_config_int_value(request_rec *r, jwt_directive directive){
 				return DEFAULT_COOKIE_REMOVE;
 			}
 			break;
+		case dir_query_parameter_remove:
+			if(dconf->query_parameter_remove_set){
+				value = dconf->query_parameter_remove;
+			}else if(sconf->query_parameter_remove_set){
+				value = sconf->query_parameter_remove;
+			}else{
+				return DEFAULT_COOKIE_REMOVE;
+			}
+			break;
+		default:
+			return 0;
 	}
 	return (const int)value;
 }
@@ -693,6 +750,10 @@ static const char *set_jwt_param(cmd_parms * cmd, void* config, const char* valu
 				apr_psprintf(cmd->pool, "Invalid delivery type, must be %s or %s (case sensitive). Fallback to Json.", JSON_DELIVERY, COOKIE_DELIVERY);
 			}
 		break;
+		case dir_token_name:
+			conf->token_name = value;
+			conf->token_name_set = 1;
+		break;
 		case dir_cookie_name:
 			if(ap_cookie_check_string(value) == APR_SUCCESS) {
 				conf->cookie_name = value;
@@ -704,6 +765,9 @@ static const char *set_jwt_param(cmd_parms * cmd, void* config, const char* valu
 		case dir_cookie_attr:
 			conf->cookie_attr = value;
 			conf->cookie_attr_set = 1;
+		break;
+		default:
+			apr_psprintf(cmd->pool, "Invalid parameter.");
 		break;
 	}
 
@@ -941,8 +1005,9 @@ static int auth_jwt_login_handler(request_rec *r){
 				ap_cookie_write(r, cookie_name, token, cookie_attr, 0,
 					r->headers_out, NULL);
 			} else {
+				char* token_name = (char *)get_config_value(r, dir_token_name);
 				apr_table_setn(r->err_headers_out, "Content-Type", "application/json");
-				ap_rprintf(r, "{\"token\":\"%s\"}", token);
+				ap_rprintf(r, "{\"%s\":\"%s\"}", token_name, token);
 			}
 
 			free(token);
@@ -968,12 +1033,13 @@ static int create_token(request_rec *r, char** token_str, const char* username, 
 	
 	char* signature_algorithm = (char *)get_config_value(r, dir_signature_algorithm);
 	unsigned char sign_key[MAX_KEY_LEN] = { 0 };
-    unsigned int keylen;
+        unsigned int keylen;
 	get_encode_key(r, signature_algorithm, sign_key, &keylen);
 
 	if(keylen == 0){
 		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55302)
 							"auth_jwt create_token: key used for signature is empty");
+		token_free(token);
 		return HTTP_INTERNAL_SERVER_ERROR;
 	}
 
@@ -986,9 +1052,9 @@ static int create_token(request_rec *r, char** token_str, const char* username, 
 							"auth_jwt create_token: using algorithm %s (key length=%d)...", signature_algorithm, keylen);
 
 	if(token_set_alg(r, token, signature_algorithm, sign_key, keylen)!=0){
-        return HTTP_INTERNAL_SERVER_ERROR;
-    }
-	
+		token_free(token);
+		return HTTP_INTERNAL_SERVER_ERROR;
+	}
 
 	time_t now = time(NULL);
 	time_t iat = now;
@@ -1123,6 +1189,41 @@ static int check_authn(request_rec *r, const char *username, const char *passwor
 }
 
 
+typedef struct
+{
+	const char* begin;
+	const char* end;
+	const char* value_begin;
+} token_range_t;
+
+static bool find_query_parameter(const char* query, const char* parameter_name, token_range_t* result)
+{
+	if (query == NULL | parameter_name == NULL)
+		return false;
+	const size_t name_len = strlen(parameter_name);
+	const size_t query_len = strlen(query);
+	const char* token_start = query;
+	const char* query_end = query + query_len;
+	while (token_start < query_end)
+	{
+		const char* token_end = strchr(token_start, '&');
+		if (token_end == NULL)
+			token_end = query_end;
+		const size_t token_len = token_end - token_start;
+		if (
+			token_len > name_len &&
+			memcmp(token_start, parameter_name, name_len) == 0 &&
+			token_start[name_len] == '='
+		)
+		{
+			*result = (token_range_t){token_start, token_end, token_start + name_len + 1};
+			return true;
+		}
+		token_start = token_end + 1;
+	}
+	return false;
+}
+
 /*
 If we are configured to handle authentication, let's look up headers to find
 whether or not 'Authorization' is set. If so, exepected format is
@@ -1162,10 +1263,21 @@ static int auth_jwt_authn_with_token(request_rec *r){
 							"auth_jwt: authSubType %s", authSubType);
 
 	// 0 wrong value, 2 bearer, 4 cookie, 6 both
-	const int delivery_type = (strlen(authSubType) == 0 || strcmp(authSubType, "-bearer") == 0) ? 2 :
-		strcmp(authSubType, "-cookie") == 0 ? 4 :
-		strcmp(authSubType, "-both") == 0 ? 6 :
-		0;
+	//const int delivery_type = (strlen(authSubType) == 0 || strcmp(authSubType, "-bearer") == 0) ? 2 :
+		//strcmp(authSubType, "-cookie") == 0 ? 4 :
+		//strcmp(authSubType, "-both") == 0 ? 6 :
+		//0;
+	int delivery_type = 0;
+	if (strcmp(authSubType, "-bearer") == 0)
+		delivery_type = 2;
+	else if (strcmp(authSubType, "-cookie") == 0)
+		delivery_type = 4;
+	else if (strcmp(authSubType, "-both") == 0)
+		delivery_type = 6;
+	else if (strcmp(authSubType, "-query") == 0)
+		delivery_type = 8;
+	else if (strcmp(authSubType, "-all") == 0)
+		delivery_type = 14;
 
 	ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55400)
 							"auth_jwt: delivery_type %i", delivery_type);
@@ -1174,6 +1286,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
 	char* logCode = APLOGNO(55401);
 	char* logStr = "auth_jwt authn: unexpected error";
 	char* errorStr = NULL;
+		char* token_str_buffer = NULL;
 
 	if (delivery_type == 0) {
 		return DECLINED;
@@ -1194,7 +1307,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
 			}
 		} else {
 			logCode = APLOGNO(55404);
-			logStr = "auth_jwt authn: missing Authorization header, responding with WWW-Authenticate header...";
+			logStr = "auth_jwt authn: missing Authorization header";
 		}
 	}
 
@@ -1211,8 +1324,41 @@ static int auth_jwt_authn_with_token(request_rec *r){
 		}
 	}
 
+	if(delivery_type & 8 && !token_str){
+		int query_parameter_remove = get_config_int_value(r, dir_query_parameter_remove);
+		const char* query_parameter_name = (char *)get_config_value(r, dir_query_parameter_name);
+		token_range_t token_range;
+		if (find_query_parameter(r->args, query_parameter_name, &token_range))
+		{
+			size_t token_length = token_range.end - token_range.value_begin;
+			token_str_buffer = (char*)malloc(token_length + 1);
+			memcpy(token_str_buffer, token_range.value_begin, token_length);
+			token_str_buffer[token_length] = 0;
+			token_str = token_str_buffer;
+			if (query_parameter_remove)
+			{
+				size_t query_len = strlen(r->args);
+				if (query_len == token_range.end - token_range.begin)
+				{
+					r->args = NULL;
+				}
+				else
+				{
+					const char* args_end = r->args + query_len;
+					size_t rest_len = args_end - token_range.end;
+					memcpy((void*)token_range.begin, token_range.end + 1, rest_len);
+				}
+			}
+		}
+		else
+		{
+			logCode = APLOGNO(55404);
+			logStr = "auth_jwt authn: missing Authorization query parameter";
+		}
+	}
+
 	if(!token_str) {
-		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, logCode, logStr);
+		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "%s%s", logCode, logStr);
 		apr_table_setn(r->err_headers_out, "WWW-Authenticate", apr_pstrcat(r->pool, "realm=\"", ap_auth_name(r),"\"", errorStr, NULL));
 		return HTTP_UNAUTHORIZED;
 	}
@@ -1225,6 +1371,8 @@ static int auth_jwt_authn_with_token(request_rec *r){
 	if(keylen == 0){
 		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55403)
 							"auth_jwt authn: key used to check signature is empty");
+		if (token_str_buffer)
+			free(token_str_buffer);
 		return HTTP_INTERNAL_SERVER_ERROR;
 	}
 
@@ -1232,6 +1380,9 @@ static int auth_jwt_authn_with_token(request_rec *r){
 	ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55405)
 						"auth_jwt authn: checking signature and fields correctness...");
 	rv = token_check(r, &token, token_str, key, keylen);
+
+	if (token_str_buffer)
+		free(token_str_buffer);
 
 	if(OK == rv){
 		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, APLOGNO(55406)
@@ -1249,7 +1400,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
 		const char* attribute_o = (const char*)get_config_value(r, dir_attribute_o);
 		char* maybe_o = (char *)token_get_claim(token, attribute_o);
 		
-		 * User claim claim is optional
+		/* * User claim claim is optional
 		if(maybe_user == NULL){
 			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, APLOGNO(55407)
 					"Username was not in token ('%s' attribute is expected)", attribute_username);
@@ -1257,7 +1408,7 @@ static int auth_jwt_authn_with_token(request_rec *r){
 			"Bearer realm=\"", ap_auth_name(r),"\", error=\"invalid_token\", error_description=\"Username was not in token\"",
 			 NULL));
 			return HTTP_UNAUTHORIZED;
-		}
+		} */
 		
 		apr_table_set(r->subprocess_env, "cn", maybe_cn);
 		apr_table_set(r->subprocess_env, "ou", maybe_ou);
